@@ -1,0 +1,1243 @@
+---
+title: "Clustering"
+# author: "Weifeng Liu (wl64)"
+date: "Last Updated: `r format(Sys.time(), '%B %d, %Y')`"
+format:
+  pdf:
+    pdf-engine: xelatex
+    papersize: letter
+    geometry: margin=1in
+    mainfont: "Cambria"
+    fontsize: 11pt
+    toc: true
+    toc-depth: 3
+    number-sections: false
+    code-block-bg: "#f1f3f5"
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    fig-pos: "H"
+    tbl-pos: "H"
+    fig_width: 6
+    fig_height: 4
+    crossref:
+      fig-title: "Figure"
+      tbl-title: "Table"
+      fig-prefix: "Figure"
+      tbl-prefix: "Table"
+header-includes: |
+  \usepackage{chngcntr}
+  \usepackage{float}
+  \usepackage{setspace}
+  \usepackage{fancyvrb}
+  \usepackage[dvipsnames,svgnames,x11names,hyperref]{xcolor}
+  \usepackage{listings}
+editor: 
+  markdown: 
+    wrap: 80
+---
+
+```{=html}
+<style>
+  body {
+  text-align: justify}
+</style>
+```
+
+\setstretch{1.25} 
+\counterwithin{table}{section}
+\setcounter{tocdepth}{3}
+\lstset{
+            basicstyle=\linespread{1.0}\ttfamily, 
+            columns=fullflexible
+          }
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      #include = TRUE, 
+                      fig.width = 6, fig.height = 4,
+                      warning = FALSE,
+                      message = FALSE,
+                      cache = TRUE,
+                      digits = 3,
+                      width = 48) 
+
+## load packages
+library(ggplot2)
+library(dplyr)
+library(caret)
+library(magrittr)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+```
+
+```{r data}
+#| include: FALSE
+
+#-------------------------------
+# Read data
+#-------------------------------
+
+train.org <- read.csv('/Users/sousekilyu/Documents/GitHub/DataSets/Credit/home-credit-default-risk/application_train.csv')
+test.org <- read.csv('/Users/sousekilyu/Documents/GitHub/DataSets/Credit/home-credit-default-risk/application_test.csv')
+pre.df <- read.csv('/Users/sousekilyu/Documents/GitHub/DataSets/Credit/home-credit-default-risk/previous_application.csv')
+```
+
+## Data Recoding
+
+```{r}
+#-------------------------------
+# recoding
+#-------------------------------
+
+process_application_data <- function(df) {
+  data <- df
+  recode_cols <- c()
+  
+  # Define variables types according to the specification
+  factor_vars <- c(
+    "NAME_CONTRACT_TYPE", "CODE_GENDER", "FLAG_OWN_CAR", "FLAG_OWN_REALTY",
+    "NAME_TYPE_SUITE", "NAME_INCOME_TYPE", "NAME_EDUCATION_TYPE", "NAME_FAMILY_STATUS",
+    "NAME_HOUSING_TYPE", "FLAG_MOBIL", "FLAG_EMP_PHONE", "FLAG_WORK_PHONE",
+    "FLAG_CONT_MOBILE", "FLAG_PHONE", "FLAG_EMAIL", "OCCUPATION_TYPE",
+    "REGION_RATING_CLIENT", "REGION_RATING_CLIENT_W_CITY", 
+    "WEEKDAY_APPR_PROCESS_START", "HOUR_APPR_PROCESS_START",
+    "REG_REGION_NOT_LIVE_REGION", "REG_REGION_NOT_WORK_REGION", 
+    "LIVE_REGION_NOT_WORK_REGION", "REG_CITY_NOT_LIVE_CITY",
+    "REG_CITY_NOT_WORK_CITY", "LIVE_CITY_NOT_WORK_CITY",
+    "ORGANIZATION_TYPE", "OBS_30_CNT_SOCIAL_CIRCLE", "DEF_30_CNT_SOCIAL_CIRCLE",
+    "OBS_60_CNT_SOCIAL_CIRCLE", "DEF_60_CNT_SOCIAL_CIRCLE",
+    paste0("FLAG_DOCUMENT_", 2:21),
+    "AMT_REQ_CREDIT_BUREAU_HOUR", "AMT_REQ_CREDIT_BUREAU_DAY",
+    "AMT_REQ_CREDIT_BUREAU_WEEK", "AMT_REQ_CREDIT_BUREAU_MON",
+    "AMT_REQ_CREDIT_BUREAU_QRT", "AMT_REQ_CREDIT_BUREAU_YEAR"
+  )
+
+  numeric_vars <- c(
+    "CNT_CHILDREN", "AMT_INCOME_TOTAL", "AMT_CREDIT", "AMT_ANNUITY",
+    "AMT_GOODS_PRICE", "REGION_POPULATION_RELATIVE", "DAYS_BIRTH",
+    "DAYS_EMPLOYED", "DAYS_REGISTRATION", "DAYS_ID_PUBLISH", "OWN_CAR_AGE",
+    "CNT_FAM_MEMBERS", "EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3",
+    "APARTMENTS_AVG", "BASEMENTAREA_AVG", "YEARS_BEGINEXPLUATATION_AVG",
+    "YEARS_BUILD_AVG", "COMMONAREA_AVG", "ELEVATORS_AVG", "ENTRANCES_AVG",
+    "FLOORSMAX_AVG", "FLOORSMIN_AVG", "LANDAREA_AVG", "LIVINGAPARTMENTS_AVG",
+    "LIVINGAREA_AVG", "NONLIVINGAPARTMENTS_AVG", "NONLIVINGAREA_AVG",
+    "APARTMENTS_MODE", "BASEMENTAREA_MODE", "YEARS_BEGINEXPLUATATION_MODE",
+    "YEARS_BUILD_MODE", "COMMONAREA_MODE", "ELEVATORS_MODE", "ENTRANCES_MODE",
+    "FLOORSMAX_MODE", "FLOORSMIN_MODE", "LANDAREA_MODE", "LIVINGAPARTMENTS_MODE",
+    "LIVINGAREA_MODE", "NONLIVINGAPARTMENTS_MODE", "NONLIVINGAREA_MODE",
+    "APARTMENTS_MEDI", "BASEMENTAREA_MEDI", "YEARS_BEGINEXPLUATATION_MEDI",
+    "YEARS_BUILD_MEDI", "COMMONAREA_MEDI", "ELEVATORS_MEDI", "ENTRANCES_MEDI",
+    "FLOORSMAX_MEDI", "FLOORSMIN_MEDI", "LANDAREA_MEDI", "LIVINGAPARTMENTS_MEDI",
+    "LIVINGAREA_MEDI", "NONLIVINGAPARTMENTS_MEDI", "NONLIVINGAREA_MEDI",
+    "FONDKAPREMONT_MODE", "HOUSETYPE_MODE", "TOTALAREA_MODE",
+    "WALLSMATERIAL_MODE", "EMERGENCYSTATE_MODE", "DAYS_LAST_PHONE_CHANGE"
+  )
+  # Convert to appropriate types first
+  data[numeric_vars] <- lapply(data[numeric_vars], as.numeric)
+  data[factor_vars] <- lapply(data[factor_vars], as.factor)
+  
+  # Special processing
+  
+  # Log transformations with new names
+  log_vars <- c("AMT_INCOME_TOTAL", "AMT_GOODS_PRICE", "CNT_FAM_MEMBERS")
+  for(var in log_vars) {
+    if(var %in% names(data)) {
+      new_name <- paste0("LOG_", var)
+      data[[new_name]] <- log(data[[var]])
+      recode_cols <- c(recode_cols, var)
+      data[[var]] <- NULL
+    }
+  }
+
+  # DAYS_EMPLOYED processing
+  data$LOG_DAYS_EMPLOYED <- log(abs(data$DAYS_EMPLOYED))
+  data$LOG_DAYS_EMPLOYED[data$DAYS_EMPLOYED == 365243] <- NA
+  recode_cols <- c(recode_cols, "DAYS_EMPLOYED")
+  data$DAYS_EMPLOYED <- NULL
+
+  # AMT_CREDIT processing
+  data$CREDIT_ANNUITY_RATIO <- data$AMT_CREDIT / data$AMT_ANNUITY
+  # recode_cols <- c(recode_cols, "AMT_CREDIT")
+  # data$AMT_CREDIT <- NULL
+
+  # CNT_CHILDREN recoding
+  data$CNT_CHILDREN_CAT <- cut(data$CNT_CHILDREN, 
+                              breaks = c(-Inf, 0, 1, 2, 3, Inf),
+                              labels = c("0", "1", "2", "3", "4+"))
+  recode_cols <- c(recode_cols, "CNT_CHILDREN")
+  data$CNT_CHILDREN <- NULL
+
+  # NAME_TYPE_SUITE processing
+  data$NAME_TYPE_SUITE <- ifelse(data$NAME_TYPE_SUITE == "Unaccompanied", 0,
+                                ifelse(is.na(data$NAME_TYPE_SUITE), NA, 1))
+
+  # OCCUPATION_TYPE recoding
+  high_skill <- c("Managers", "Accountants", "Core staff", "High skill tech staff",
+                  "IT staff", "HR staff", "Medicine staff", "Realty agents", "Secretaries")
+  medium_skill <- c("Sales staff", "Drivers", "Cooking staff", "Private service staff",
+                    "Waiters/barmen staff", "Security staff")
+  low_skill <- c("Laborers", "Low-skill Laborers", "Cleaning staff")
+
+  data$OCCUPATION_TYPE_CAT <- case_when(
+    data$OCCUPATION_TYPE %in% high_skill ~ "High Skill",
+    data$OCCUPATION_TYPE %in% medium_skill ~ "Medium Skill",
+    data$OCCUPATION_TYPE %in% low_skill ~ "Low Skill",
+    TRUE ~ "Other"
+  )
+  recode_cols <- c(recode_cols, "OCCUPATION_TYPE")
+  data$OCCUPATION_TYPE <- NULL
+
+  # ORGANIZATION_TYPE recoding
+  govt_public <- c("Government", "Religion", "Security Ministries", "Emergency", "Police", "Military")
+  edu_research <- c("University", "School", "Kindergarten")
+  healthcare_social <- c("Medicine", "Insurance", "Housing", "Cleaning", "Legal Services")
+  transport_logistics <- c("Transport: type 1", "Transport: type 2", "Transport: type 3", 
+                         "Transport: type 4", "Postal")
+  finance_prof <- c("Bank", "Insurance", "Legal Services", "Realtor", "Advertising")
+  retail_trade <- c("Trade: type 1", "Trade: type 2", "Trade: type 3", "Trade: type 4",
+                   "Trade: type 5", "Trade: type 6", "Trade: type 7", "Restaurant", "Hotel")
+  industry_manuf <- paste0("Industry: type ", 1:13)
+  tech_it <- c("Telecom", "Electricity", "Mobile", "IT")
+
+  data$ORGANIZATION_TYPE_CAT <- case_when(
+    data$ORGANIZATION_TYPE %in% govt_public ~ "Government & Public Services",
+    data$ORGANIZATION_TYPE %in% edu_research ~ "Education & Research",
+    data$ORGANIZATION_TYPE %in% healthcare_social ~ "Healthcare & Social Services",
+    data$ORGANIZATION_TYPE %in% transport_logistics ~ "Transportation & Logistics",
+    data$ORGANIZATION_TYPE %in% finance_prof ~ "Finance & Professional Services",
+    data$ORGANIZATION_TYPE %in% retail_trade ~ "Retail & Trade",
+    data$ORGANIZATION_TYPE %in% industry_manuf ~ "Industry & Manufacturing",
+    data$ORGANIZATION_TYPE %in% tech_it ~ "Technology & IT Services",
+    TRUE ~ "Other"
+  )
+  recode_cols <- c(recode_cols, "ORGANIZATION_TYPE")
+  data$ORGANIZATION_TYPE <- NULL
+
+  # Create interaction terms
+  data$INCOME_CAR <- data$LOG_AMT_INCOME_TOTAL * (as.numeric(data$FLAG_OWN_CAR) - 1)
+  data$INCOME_REALTY <- data$LOG_AMT_INCOME_TOTAL * (as.numeric(data$FLAG_OWN_REALTY) - 1)
+  data$INCOME_CHILDREN <- data$LOG_AMT_INCOME_TOTAL * as.numeric(data$CNT_CHILDREN_CAT)
+  data$INCOME_FAM_MEMBERS <- data$LOG_AMT_INCOME_TOTAL * data$LOG_CNT_FAM_MEMBERS
+  data$HOUR_WEEKDAY <- interaction(data$HOUR_APPR_PROCESS_START, 
+                                  data$WEEKDAY_APPR_PROCESS_START)
+
+  return(list(
+    data = data,
+    recode_cols = recode_cols
+  ))
+}
+
+
+# Usage:
+result <- process_application_data(train.org)
+train <- result$data
+recode_cols <- result$recode_cols
+
+# Print recoded columns
+print("Recoded columns:")
+print(recode_cols)
+
+# Check data structure
+str(train)
+
+```
+
+## Clustering
+
+### Normalized information about building where the client lives
+
+#### Missing data
+
+We conducted Principal Component Analysis (PCA) on the building-related features
+after careful preprocessing. The initial analysis of missing values revealed
+significant data gaps, with missing rates ranging from 0% to 69.87%. Common
+areas (COMMONAREA_AVG/MODE/MEDI) showed the highest missing rate at
+approximately 69.87%, while administrative features like EMERGENCYSTATE_MODE and
+WALLSMATERIAL_MODE had no missing values.
+
+```{r miss-1}
+#| message: FALSE
+
+#-------------------------------
+# Missing Values
+#-------------------------------
+
+building_cols <- c(
+    # AVG variables
+    "APARTMENTS_AVG", "BASEMENTAREA_AVG", "YEARS_BEGINEXPLUATATION_AVG",
+    "YEARS_BUILD_AVG", "COMMONAREA_AVG", "ELEVATORS_AVG", "ENTRANCES_AVG",
+    "FLOORSMAX_AVG", "FLOORSMIN_AVG", "LANDAREA_AVG", "LIVINGAPARTMENTS_AVG",
+    "LIVINGAREA_AVG", "NONLIVINGAPARTMENTS_AVG", "NONLIVINGAREA_AVG",
+    # MODE variables
+    "APARTMENTS_MODE", "BASEMENTAREA_MODE", "YEARS_BEGINEXPLUATATION_MODE",
+    "YEARS_BUILD_MODE", "COMMONAREA_MODE", "ELEVATORS_MODE", "ENTRANCES_MODE",
+    "FLOORSMAX_MODE", "FLOORSMIN_MODE", "LANDAREA_MODE", "LIVINGAPARTMENTS_MODE",
+    "LIVINGAREA_MODE", "NONLIVINGAPARTMENTS_MODE", "NONLIVINGAREA_MODE",
+    # MEDI variables
+    "APARTMENTS_MEDI", "BASEMENTAREA_MEDI", "YEARS_BEGINEXPLUATATION_MEDI",
+    "YEARS_BUILD_MEDI", "COMMONAREA_MEDI", "ELEVATORS_MEDI", "ENTRANCES_MEDI",
+    "FLOORSMAX_MEDI", "FLOORSMIN_MEDI", "LANDAREA_MEDI", "LIVINGAPARTMENTS_MEDI",
+    "LIVINGAREA_MEDI", "NONLIVINGAPARTMENTS_MEDI", "NONLIVINGAREA_MEDI",
+    # Additional variables
+    "FONDKAPREMONT_MODE", "HOUSETYPE_MODE", "TOTALAREA_MODE", 
+    "WALLSMATERIAL_MODE", "EMERGENCYSTATE_MODE"
+)
+
+# Missing data
+missing_analysis <- data.frame(
+    Variable = building_cols,
+    Missing_Count = sapply(train[building_cols], function(x) sum(is.na(x))),
+    Missing_Percent = sapply(train[building_cols], function(x) mean(is.na(x)) * 100)
+)
+
+# Missing proportion
+missing_analysis <- missing_analysis[order(-missing_analysis$Missing_Percent), ]
+rownames(missing_analysis) <- 1:dim(missing_analysis)[1]
+head(missing_analysis)
+```
+
+Given the high proportion of missing values, we implemented a **50% missing rate
+threshold** for variable selection. This preprocessing step reduced our feature
+set from 47 original variables to 7 key variables, ensuring more reliable
+analysis while maintaining data quality.
+
+```{r miss-2}
+# Deal with missing data
+numeric_cols <- names(train[building_cols])[sapply(train[building_cols], is.numeric)]
+missing_threshold <- 50  # threshhold
+selected_cols <- missing_analysis$Variable[
+    missing_analysis$Missing_Percent < missing_threshold & 
+    missing_analysis$Variable %in% numeric_cols
+]
+
+# replace with mid ???
+
+pca_data <- train[selected_cols]
+pca_data <- apply(pca_data, 2, function(x) {
+    ifelse(is.na(x), median(x, na.rm = TRUE), x)
+})
+
+```
+
+#### Principal Component Analysis
+
+The PCA results were notably effective, with the first two principal components
+explaining 91.97% of the total variance: - Principal Component 1 (PC1) accounts
+for 51.47% of the variance - Principal Component 2 (PC2) accounts for 40.50% of
+the variance
+
+The first principal component (PC1) is primarily characterized by building
+structure features, with the highest loadings from:
+
+1\. FLOORSMAX_MEDI (0.484)
+
+2\. FLOORSMAX_AVG (0.484)
+
+3\. FLOORSMAX_MODE (0.482)
+
+4\. TOTALAREA_MODE (0.382)
+
+5\. YEARS_BEGINEXPLUATATION_AVG (0.229)
+
+The second principal component (PC2) is predominantly influenced by building age
+and similar characteristics:
+
+1\. YEARS_BEGINEXPLUATATION_AVG (0.532)
+
+2\. YEARS_BEGINEXPLUATATION_MEDI (0.531)
+
+3\. YEARS_BEGINEXPLUATATION_MODE (0.529)
+
+4\. FLOORSMAX_MEDI (0.211)
+
+5\. FLOORSMAX_AVG (0.211)
+
+```{r pca-1}
+#-------------------------------
+# PCA
+#-------------------------------
+
+library(factoextra)
+library(FactoMineR)
+
+pca_scaled <- scale(pca_data)
+pca_result <- prcomp(pca_scaled)
+
+## Evaluate PCA results
+# Calculate proportion of variance explained
+var_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+cum_var_explained <- cumsum(var_explained)
+
+p1 <- fviz_eig(pca_result, 
+         addlabels = TRUE,
+         ylim = c(0, 60),
+         main = "Scree Plot of PCA Components")+
+  theme(aspect.ratio = 1)
+
+## print
+{
+  cat("\n\nCumulative proportion of variance explained:\n")
+  print(cum_var_explained)
+}
+
+## Examine variable contributions to principal components
+# Visualize variable contributions to first two components
+var_contrib <- get_pca_var(pca_result)
+p2 <- fviz_pca_var(pca_result,
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             labelsize = 2)+
+  theme(aspect.ratio = 1)
+
+grid.arrange(p1, p2, ncol = 2)
+# ## print
+# {
+#   cat("\n\nTop contributing variables for first two components:\n")
+#   print(sort(abs(pca_result$rotation[,1]), decreasing = TRUE)[1:5])
+#   print(sort(abs(pca_result$rotation[,2]), decreasing = TRUE)[1:5])
+# }
+
+# Determine optimal number of components to retain
+n_components <- which(cum_var_explained >= 0.80)[1]
+cat("\nSuggested number of components (80% variance explained):", n_components)
+
+```
+
+Given the high cumulative explained variance (91.97%) with just two components,
+this dimensional reduction effectively captures the essential patterns in the
+building-related features while significantly simplifying the feature space. PC1
+appears to represent the physical scale of buildings (dominated by floor and
+area measurements), while PC2 primarily captures the temporal aspects (building
+age and exploitation period)."
+
+This analysis suggests that the complex building-related information can be
+effectively summarized using just these two principal components while retaining
+over 90% of the original information.
+
+```{r pca-2}
+#-------------------------------
+# Results of PCA
+#-------------------------------
+
+# Extract first two principal components
+train_pc_scores <- as.data.frame(pca_result$x[, 1:2])
+names(train_pc_scores) <- c("BUILDING_PC1", "BUILDING_PC2")
+
+# If you want to add these components back to original dataset
+train_with_pcs <- cbind(train[, !colnames(train) %in% building_cols], 
+                        train_pc_scores)
+
+# 
+# ## Visualize observations in PC1-PC2 space
+# ggplot(pc_scores, aes(x = BUILDING_PC1, y = BUILDING_PC2)) +
+#     geom_point(alpha = 0.5) +
+#     theme_minimal() +
+#     labs(title = "Observations in First Two Principal Components Space",
+#          x = paste0("PC1 (", round(var_explained[1] * 100, 1), "% variance explained)"),
+#          y = paste0("PC2 (", round(var_explained[2] * 100, 1), "% variance explained)"))
+
+# Biplot of variables and observations
+fviz_pca_biplot(pca_result,
+                axes = c(1, 2),  
+                repel = TRUE,    
+                col.var = "contrib",  
+                geom = "point",    
+                alpha.ind = 0.5)   
+
+```
+
+```{r test-pca}
+#-------------------------------
+# test
+#-------------------------------
+
+numeric_cols <- names(test[building_cols])[sapply(test[building_cols], is.numeric)]
+missing_threshold <- 50  # threshhold
+selected_cols <- missing_analysis$Variable[
+    missing_analysis$Missing_Percent < missing_threshold & 
+    missing_analysis$Variable %in% numeric_cols
+]
+
+pca_data <- test[selected_cols]
+pca_data <- apply(pca_data, 2, function(x) {
+    ifelse(is.na(x), median(x, na.rm = TRUE), x)
+})
+
+pca_scaled <- scale(pca_data)
+pca_result <- prcomp(pca_scaled)
+
+test_pc_scores <- as.data.frame(pca_result$x[, 1:2])
+names(test_pc_scores) <- c("BUILDING_PC1", "BUILDING_PC2")
+# If you want to add these components back to original dataset
+test_with_pcs <- cbind(test[, !colnames(test) %in% building_cols], 
+                        test_pc_scores)
+```
+
+### Provided Documents
+
+Upon examining the relationship between document provision status and default
+rates, we consistently observe that when documents (most of them) are provided,
+default rates are significantly lower than when they are missing. This negative
+association is particularly pronounced in documents like FLAG 4, where the
+difference in default rates (missing vs. provided) is the most substantial. The
+systematic nature of this relationship and its considerable effect size indicate
+that these document flags have significant predictive power for default risk.
+
+Therefore, we recommend retaining these original binary variables in their
+current form for the modeling process, rather than applying any feature
+aggregation or transformation. This choice is further supported by the clear
+interpretability of these features, which is essential for model transparency
+and practical business applications.
+
+```{r doc}
+# Create analysis function
+analyze_document_default <- function(data, doc_cols) {
+    # Store analysis results for each document
+    results <- list()
+    
+    for(col in doc_cols) {
+        # Calculate statistics
+        total_count <- nrow(data)
+        not_provided <- sum(is.na(data[[col]]) | data[[col]] == 0)
+        provided <- total_count - not_provided
+        
+        # Calculate default rates
+        default_rate_when_missing <- mean(data$TARGET[is.na(data[[col]]) | data[[col]] == 0])
+        default_rate_when_provided <- mean(data$TARGET[!is.na(data[[col]]) & data[[col]] == 1])
+        
+        results[[col]] <- data.frame(
+            document = col,
+            not_provided_count = not_provided,
+            not_provided_rate = not_provided/total_count,
+            default_rate_when_missing = default_rate_when_missing,
+            default_rate_when_provided = default_rate_when_provided,
+            default_rate_diff = default_rate_when_missing - default_rate_when_provided
+        )
+    }
+    
+    # Combine all results
+    result_df <- do.call(rbind, results)
+    return(result_df)
+}
+
+# Perform analysis
+doc_cols <- paste0("FLAG_DOCUMENT_", 2:21)
+analysis_results <- analyze_document_default(train, doc_cols)
+
+# Sort results by default rate difference
+analysis_results <- analysis_results[order(-(analysis_results$default_rate_diff)), ]
+head(analysis_results[,-1])
+
+
+# Create visualizations
+library(ggplot2)
+library(gridExtra)
+library(grid)
+
+# Adjust font sizes and layout
+p1 <- ggplot(analysis_results, aes(x = not_provided_rate, y = default_rate_diff)) +
+    geom_point(aes(size = abs(default_rate_diff)), alpha = 0.6) +
+    geom_text(aes(label = sub("FLAG_DOCUMENT_", "", document)), 
+              vjust = -1, size = 2.5) +  # Reduced text size
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    labs(title = "Document Missing Rate vs Default Rate Difference",
+         x = "Missing Rate",
+         y = "Default Rate Difference (Missing - Provided)",
+         size = "Impact") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(size = 10),  # Smaller title
+        axis.title = element_text(size = 8),   # Smaller axis titles
+        axis.text = element_text(size = 7),    # Smaller axis text
+        legend.title = element_text(size = 8), # Smaller legend title
+        legend.text = element_text(size = 7)   # Smaller legend text
+    )
+
+plot_data <- analysis_results %>%
+    select(document, default_rate_when_missing, default_rate_when_provided) %>%
+    gather(key = "status", value = "default_rate", -document) %>%
+    mutate(
+        document_num = as.numeric(sub("FLAG_DOCUMENT_", "", document)),
+        document_label = paste("FLAG", document_num),
+        document_label = factor(document_label, 
+                              levels = paste("FLAG", 
+                                           as.numeric(sub("FLAG_DOCUMENT_", "", 
+                                                        analysis_results$document))))
+    )
+
+p2 <- ggplot(plot_data, aes(x = document_label, y = default_rate, fill = status)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    coord_flip() +
+    labs(title = "Default Rates by Document Status",
+         x = "Document",
+         y = "Default Rate",
+         fill = "Document Status") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(size = 10),  # Smaller title
+        axis.title = element_text(size = 8),   # Smaller axis titles
+        axis.text = element_text(size = 7),    # Smaller axis text
+        legend.title = element_text(size = 8), # Smaller legend title
+        legend.text = element_text(size = 7)   # Smaller legend text
+    ) +
+    scale_fill_discrete(labels = c("When Missing", "When Provided"))
+
+# Add more space between plots and adjust overall size
+grid.arrange(p1, p2, ncol = 2, widths = c(1, 1),
+             layout_matrix = rbind(c(1, 2)),
+             top = textGrob("", gp = gpar(fontsize = 11)),  # Optional overall title
+             padding = unit(2, "line"))  # Add padding between plots
+
+
+```
+
+### Previous Application
+
+Historical application patterns from previous application data are strong
+predictors of future default behavior. To effectively incorporate this
+information, we aggregate multiple historical applications (\`SK_ID_PREV\`)
+linked to each current application (\`SK_ID_CURR\`) using **a time-weighted
+approach**. This method emphasizes recent behavior while preserving the
+relevance of historical patterns through exponential time decay weighting,
+capturing the temporal evolution of the client's credit behavior and risk
+profile.
+
+Based on the order of `DAYS_DECISION` (from recent to old), we generate time
+weights using the formula (
+$\text{time\_weight} = \exp\left(-\frac{|\text{DAYS\_DECISION}|}{365}\right)$ ).
+Using these weights, we aggregate data by `SK_ID_CURR` to create four variables:
+`weighted_approval_rate`, `weighted_credit_ratio`, `recent_approval`, and
+`trend_credit_ratio`. This approach allows us to quantify the influence of
+historical application behavior on current credit risk assessments.
+
+**K-means** clustering was applied to segment application behaviors. The optimal
+number of clusters was determined using **the elbow method**, which examined
+both absolute WSS and its decrease ratio. The analysis indicated that **k=5**
+offers the most efficient segmentation, with minimal marginal improvements
+beyond this point, suggesting five distinct behavioral patterns in the
+historical application data.
+
+```{r kmeans-1}
+
+#-------------------------------
+# Feature Selection from Previous Application
+#-------------------------------
+
+key_features <- c(
+    # Application Result
+    "NAME_CONTRACT_STATUS",     # Approval status
+    "CODE_REJECT_REASON",      # Rejection reason
+    
+    # Amount Related
+    "AMT_APPLICATION",         # Applied amount
+    "AMT_CREDIT",             # Approved amount
+    "AMT_DOWN_PAYMENT",       # Down payment
+    
+    # Time Related
+    "DAYS_DECISION",          # Days relative to current application
+    
+    # Product Related
+    "NAME_CONTRACT_TYPE",      # Contract type
+    "NAME_CLIENT_TYPE"         # New/Existing customer
+)
+
+#-------------------------------
+# Time-weighted Feature Aggregation
+#-------------------------------
+
+temporal_features <- pre.df %>%
+    group_by(SK_ID_CURR) %>%
+    arrange(desc(DAYS_DECISION)) %>%  # Sort by time (recent to old)
+    mutate(
+        # Calculate time weights (higher weight for recent events)
+        time_weight = exp(-abs(DAYS_DECISION) / 365),
+        
+        # Calculate approval rate changes over time
+        approval_status = ifelse(NAME_CONTRACT_STATUS == "Approved", 1, 0),
+        cumulative_approval_rate = cummean(approval_status),
+        
+        # Calculate credit ratio changes over time
+        credit_application_ratio = AMT_CREDIT / AMT_APPLICATION,
+        weighted_credit_ratio = credit_application_ratio * time_weight
+    ) %>%
+    summarise(
+        # Time-weighted features
+        weighted_approval_rate = weighted.mean(approval_status, time_weight),
+        weighted_credit_ratio = weighted.mean(credit_application_ratio, time_weight),
+        recent_approval = first(approval_status),
+        trend_credit_ratio = cor(row_number(), credit_application_ratio, 
+                                method = "spearman")
+    )
+
+#-------------------------------
+# Data Preprocessing
+#-------------------------------
+
+# Clean and handle missing values
+clean_temporal <- temporal_features %>%
+    mutate(across(where(is.numeric), ~replace(., is.infinite(.), NA))) %>%
+    mutate(across(where(is.numeric), ~replace(., is.na(.), median(., na.rm = TRUE))))
+
+# Standardize features
+scaled_features <- scale(clean_temporal[, c("weighted_approval_rate", 
+                                          "weighted_credit_ratio",
+                                          "recent_approval",
+                                          "trend_credit_ratio")])
+
+#-------------------------------
+# Elbow Method Analysis
+#-------------------------------
+
+# Calculate WSS for different k values
+wss <- sapply(1:10, function(k) {
+    kmeans(scaled_features, centers = k, nstart = 25)$tot.withinss
+})
+
+# Create elbow method dataframe
+elbow_df <- data.frame(
+    k = 1:10,
+    wss = wss,
+    wss_decrease = c(NA, -diff(wss)),
+    wss_decrease_ratio = c(NA, -diff(wss)/wss[-length(wss)])
+)
+
+#-------------------------------
+# Visualization of Elbow Method
+#-------------------------------
+
+# Basic line plot for WSS
+p1 <- ggplot(elbow_df, aes(x = k, y = wss)) +
+    geom_line(color = "blue", size = 1) +
+    geom_point(size = 3) +
+    theme_minimal() +
+    labs(title = "Elbow Method for Optimal k",
+         x = "Number of Clusters (k)",
+         y = "Within Sum of Squares (WSS)")
+
+# Bar plot for WSS decrease
+p2 <- ggplot(elbow_df[-1,], aes(x = factor(k), y = wss_decrease)) +
+    geom_bar(stat = "identity", fill = "skyblue") +
+    theme_minimal() +
+    labs(title = "WSS Decrease by k",
+         x = "Number of Clusters (k)",
+         y = "WSS Decrease")
+
+# Line plot for WSS decrease ratio
+p3 <- ggplot(elbow_df[-1,], aes(x = k, y = wss_decrease_ratio)) +
+    geom_line(color = "red", size = 1) +
+    geom_point(size = 3) +
+    theme_minimal() +
+    labs(title = "WSS Decrease Ratio by k",
+         x = "Number of Clusters (k)",
+         y = "WSS Decrease Ratio")
+
+# Combine plots
+grid.arrange(p1, p2, p3, ncol = 2)
+```
+
+The K-means clustering analysis revealed five distinct patterns in historical
+application behavior:
+
+**Cluster 1 (33,044 customers):**
+
+-   Approval Rate: 0.865 (High)
+-   Credit Ratio: 0.994 (Balanced)
+-   Recent Approval History: 0.873 (Strong)
+-   Represents stable, consistent borrowers.
+
+**Cluster 2 (47,908 customers - largest group):**
+
+-   Approval Rate: 0.974 (Very High)
+-   Credit Ratio: 1.13 (Above Average)
+-   Recent Approval: 0.996 (Excellent)
+-   Represents prime customers with strong credit profiles.
+
+**Cluster 3 (11,501 customers):**
+
+-   Approval Rate: 0.978 (Highest)
+-   Credit Ratio: 0.743 (Conservative)
+-   Recent Approval: 0.987 (Very Good)
+-   Represents cautious borrowers who consistently get approved but apply for
+    smaller loans.
+
+**Cluster 4 (127,765 customers):**
+
+-   Approval Rate: 0.288 (Very Low)
+-   Credit Ratio: 1.01 (Average)
+-   Recent Approval: 0.000376 (Poor)
+-   Represents high-risk applicants with consistent rejections.
+
+**Cluster 5 (118,639 customers):**
+
+-   Approval Rate: 0.848 (Good)
+-   Credit Ratio: 0.996 (High)
+-   Recent Approval: 1.0 (Perfect)
+-   Represents recently improved borrowers with an excellent recent history.
+
+The clustering effectively separates customers based on their historical
+performance, showcasing clear distinctions in approval rates and credit
+utilization patterns across segments.
+
+```{r kmeans-2}
+
+#-------------------------------
+# KMeans Clustering
+#-------------------------------
+
+# Perform clustering
+set.seed(42)
+k <- 5  
+cluster_result <- kmeans(scaled_features, centers = k, nstart = 25)
+
+# Add cluster labels to original data
+results_cluster <- clean_temporal %>%
+    mutate(cluster = cluster_result$cluster)
+
+# Generate cluster summary
+cluster_summary <- results %>%
+    group_by(cluster) %>%
+    summarise(
+        size = n(),
+        avg_weighted_approval = mean(weighted_approval_rate),
+        avg_weighted_credit = mean(weighted_credit_ratio),
+        avg_recent_approval = mean(recent_approval),
+        avg_trend = mean(trend_credit_ratio)
+    )
+
+print("Cluster Summary:")
+print(cluster_summary)
+
+#-------------------------------
+# Cluster Visualization
+#-------------------------------
+
+# # Scatter plot of clusters
+# ggplot(results, aes(x = trend_credit_ratio, 
+#                     y = weighted_approval_rate, 
+#                     color = factor(cluster))) +
+#     geom_point(alpha = 0.5) +
+#     theme_minimal() +
+#     labs(title = "Client Clusters based on Application History",
+#          x = "Weighted Approval Rate (log)",
+#          y = "Weighted Credit Ratio (log)",
+#          color = "Cluster")
+```
+
+Using historical application data, we identified five distinct customer segments
+through K-means clustering. The decision tree analysis indicates that recent
+approval status is the primary differentiator, followed closely by credit ratio
+trends. The segments are as follows:
+
+-   **High-Risk Segment (Cluster 4)**: 37.7%
+-   **Recently Improved (Cluster 5)**: 35.0%
+-   **Prime Customers (Cluster 2)**: 14.1%
+-   **Stable Performers (Cluster 1)**: 9.75%
+-   **Conservative Borrowers (Cluster 3)**: 3.39%
+
+This segmentation provides a clear framework for understanding customer risk
+profiles based on their historical application patterns.
+
+```{r kmeans-3}
+
+#-------------------------------
+# Decision Tree Analysis
+#-------------------------------
+
+# Create decision tree model
+tree_model <- rpart(factor(cluster) ~ weighted_approval_rate + 
+                                     weighted_credit_ratio + 
+                                     recent_approval + 
+                                     trend_credit_ratio,
+                   data = results,
+                   method = "class")
+
+# Visualize decision tree
+rpart.plot(tree_model, 
+           extra = 104,
+           box.palette = "Blues",
+           shadow.col = "gray",
+           nn = TRUE)
+
+#-------------------------------
+# Export Cluster Labels
+#-------------------------------
+
+cluster_labels <- data.frame(
+    SK_ID_CURR = clean_temporal$SK_ID_CURR,
+    cluster = cluster_result$cluster
+)
+
+# describe
+cluster_profiles <- results %>%
+    group_by(cluster) %>%
+    summarise(
+        count = n(),
+        pct_total = n() / nrow(results) * 100,
+        
+        avg_approval_rate = mean(weighted_approval_rate),
+        avg_credit_ratio = mean(weighted_credit_ratio),
+        recent_approval_rate = mean(recent_approval),
+        avg_trend = mean(trend_credit_ratio),
+        
+        sd_approval_rate = sd(weighted_approval_rate),
+        sd_credit_ratio = sd(weighted_credit_ratio)
+    ) %>%
+    arrange(desc(count))
+
+print(cluster_profiles)
+```
+
+## Predictions
+
+### Data and dimensions
+
+```{r}
+#-------------------------------
+# Features selecting
+#-------------------------------
+
+## Train data
+# clusters label
+train_with_label <- left_join(train[, !colnames(train) %in% key_features],
+                                    results_cluster)  # cluster_labels
+# join data
+train_join <- train %>%
+  left_join(train_with_pcs) %>%
+  left_join(train_with_label)
+
+# clusters label
+test_with_label <- left_join(test[, !colnames(test) %in% key_features],
+                                    results_cluster) 
+# join data
+test_join <- test %>%
+  left_join(test_with_pcs) %>%
+  left_join(test_with_label)
+```
+
+### XGBOOST
+
+```{r}
+# Split data into training and testing sets
+set.seed(123)
+train_index <- createDataPartition(train_join$TARGET, p = 0.8, list = FALSE)
+train_data <- train_join[train_index, ]
+test_data <- train_join[-train_index, ]
+
+# Create a copy of the data
+train_data_prep <- train_data
+
+# Remove ID column
+train_data_prep <- train_data_prep[, -which(names(train_data_prep) == "SK_ID_CURR")]
+
+# Handle character and factor variables
+# Convert all character variables to factors, then to numeric
+train_data_prep <- train_data_prep %>%
+  mutate_if(is.character, factor) %>%
+  mutate_if(is.factor, as.numeric)
+
+# Handle missing values
+# Fill numeric NA values with median
+for(col in names(train_data_prep)) {
+  if(is.numeric(train_data_prep[[col]])) {
+    train_data_prep[[col]] <- ifelse(is.na(train_data_prep[[col]]), 
+                                    median(train_data_prep[[col]], na.rm = TRUE),
+                                    train_data_prep[[col]])
+  }
+}
+
+# Apply SMOTE
+smote_result <- SMOTE(
+  X = train_data_prep[, -which(names(train_data_prep) == "TARGET")],
+  target = train_data_prep$TARGET,
+  K = 5,
+  dup_size = 2
+)
+
+# Process SMOTE results
+train_data_balanced <- smote_result$data
+
+# Convert TARGET back to factor
+train_data_balanced$TARGET <- as.factor(train_data_balanced$class)
+train_data_balanced <- train_data_balanced[, -which(names(train_data_balanced) == "class")]
+
+# Store original column types
+original_types <- sapply(train_data, class)
+
+# Restore original data types after SMOTE
+for(col in names(train_data_balanced)) {
+  if(col %in% names(original_types)) {
+    if(original_types[col] == "factor") {
+      train_data_balanced[[col]] <- as.factor(train_data_balanced[[col]])
+    } else if(original_types[col] == "character") {
+      train_data_balanced[[col]] <- as.character(train_data_balanced[[col]])
+    }
+  }
+}
+```
+
+xgboost
+
+```{r xgboost}
+# Load required packages
+library(xgboost)
+library(caret)
+
+# Prepare data
+# Split data into feature matrix and label vector
+X <- train_data_balanced[, -which(names(train_data_balanced) == "TARGET")]
+y <- as.numeric(train_data_balanced$TARGET) - 1  # XGBoost requires 0-based labels
+
+# Convert to XGBoost specific matrix format
+# Check which columns are character type
+char_cols <- sapply(X, is.character)
+print(names(X)[char_cols])
+
+# Complete data preprocessing steps
+X_prep <- X %>%
+  # Convert all character columns to factors
+  mutate_if(is.character, factor) %>%
+  # Convert all factor columns to numeric
+  mutate_if(is.factor, as.numeric) %>%
+  # Ensure all columns are numeric
+  mutate_all(as.numeric)
+
+# Handle missing values
+X_prep <- as.data.frame(apply(X_prep, 2, function(x) {
+  if(any(is.na(x))) {
+    x[is.na(x)] <- median(x, na.rm = TRUE)
+  }
+  return(x)
+}))
+
+# Verify all data is numeric
+str(X_prep)
+sum(sapply(X_prep, function(x) !is.numeric(x)))  # Should return 0
+
+# Create XGBoost matrix
+dtrain <- xgb.DMatrix(data = as.matrix(X_prep), label = y)
+
+# Set parameters
+params <- list(
+  objective = "binary:logistic",  # Binary classification
+  eval_metric = "auc",           # Evaluation metric
+  eta = 0.03,                     # Learning rate
+  max_depth = 6,                 # Maximum tree depth
+  min_child_weight = 1,          # Minimum sum of instance weight
+  subsample = 0.8,               # Subsample ratio of training instances
+  colsample_bytree = 0.8         # Subsample ratio of columns
+)
+
+
+# Cross Validation with XGBoost
+cv_results <- xgb.cv(
+  params = params,               # Same parameters as your training model
+  data = dtrain,                # Your training data in DMatrix format
+  nfold = 5,                    # Number of folds
+  nrounds = 100,               # Number of boosting rounds
+  early_stopping_rounds = 10,   # Stop if no improvement within 10 rounds
+  metrics = "auc",             # Metrics to evaluate
+  stratified = TRUE,           # Stratified sampling for imbalanced datasets
+  verbose = TRUE,              # Print evaluation results
+  print_every_n = 10          # Print every 10 rounds
+)
+
+
+# Print final CV scores
+cat("CV AUC Score:", 
+    mean(cv_results$evaluation_log$test_auc_mean), 
+    "+/-", 
+    mean(cv_results$evaluation_log$test_auc_std), 
+    "
+")
+
+# Plot CV results
+plot(cv_results$evaluation_log$iter, 
+     cv_results$evaluation_log$test_auc_mean,
+     type = "l",
+     xlab = "Iterations",
+     ylab = "AUC",
+     main = "Cross Validation AUC vs Iterations")
+
+# Add error bands
+lines(cv_results$evaluation_log$iter,
+      cv_results$evaluation_log$test_auc_mean + cv_results$evaluation_log$test_auc_std,
+      lty = 2, col = "gray")
+lines(cv_results$evaluation_log$iter,
+      cv_results$evaluation_log$test_auc_mean - cv_results$evaluation_log$test_auc_std,
+      lty = 2, col = "gray")
+
+# Get best iteration
+best_iter <- cv_results$best_iteration
+cat("Best iteration:", best_iter, "
+")
+
+#-------------------------------
+# Best model
+#-------------------------------
+
+best_nrounds <- cv_results$best_iteration
+# Train final model using the best number of rounds
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = best_nrounds,     # Use the best number of rounds from CV
+  verbose = 1,
+  print_every_n = 10
+)
+
+# Feature importance
+importance_matrix <- xgb.importance(feature_names = colnames(X), 
+                                    model = xgb_model)
+xgb.plot.importance(importance_matrix[1:20])  # Plot top 20 important features
+
+# Make predictions on test set (if available)
+# test_matrix <- xgb.DMatrix(data = as.matrix(test_data))
+# predictions <- predict(xgb_model, test_matrix)
+
+# Save model
+# xgb.save(xgb_model, "xgboost_model.model")
+```
+
+```{r test}
+# Complete data preprocessing function
+prepare_data_for_xgboost <- function(data) {
+  # Remove unnecessary columns (like ID)
+  if("SK_ID_CURR" %in% names(data)) {
+    data <- data[, !names(data) %in% c("SK_ID_CURR")]
+  }
+  
+  # Convert character and factor types
+  data <- data %>%
+    mutate_if(is.character, factor) %>%
+    mutate_if(is.factor, as.numeric)
+  
+  # Ensure all columns are numeric
+  data <- as.data.frame(apply(data, 2, as.numeric))
+  
+  # Handle missing values
+  data <- as.data.frame(apply(data, 2, function(x) {
+    if(any(is.na(x))) {
+      x[is.na(x)] <- median(x, na.rm = TRUE)
+    }
+    return(x)
+  }))
+  
+  # Handle infinite values
+  data <- as.data.frame(apply(data, 2, function(x) {
+    if(any(is.infinite(x))) {
+      x[is.infinite(x)] <- max(x[is.finite(x)])
+    }
+    return(x)
+  }))
+  
+  return(data)
+}
+
+# Prepare test data
+test_prep <- prepare_data_for_xgboost(test_data)[,-1]
+dtest <- xgb.DMatrix(data = as.matrix(test_prep))
+
+test_features <- dimnames(dtest)[[2]]  # or colnames(test_data) depending on your data structure
+
+# Make predictions
+predictions_prob <- predict(xgb_model, dtest)  
+predictions_binary <- ifelse(predictions_prob > 0.5, 1, 0)  # Convert to binary classification results
+
+# Calculate evaluation metrics
+library(caret)
+library(pROC)
+
+# Create confusion matrix
+conf_matrix <- confusionMatrix(factor(predictions_binary), factor(test_data$TARGET))
+print(conf_matrix)
+
+# Calculate and display various metrics
+cat("
+Model Evaluation Metrics:
+")
+cat("Accuracy:", conf_matrix$overall["Accuracy"], "
+")
+cat("Precision:", conf_matrix$byClass["Pos Pred Value"], "
+")
+cat("Recall:", conf_matrix$byClass["Sensitivity"], "
+")
+cat("F1 Score:", conf_matrix$byClass["F1"], "
+")
+
+# Plot ROC curve
+roc_curve <- roc(test_data$TARGET, predictions_prob)
+auc_value <- auc(roc_curve)
+cat("AUC:", auc_value, "
+")
+
+# Draw ROC curve plot
+plot(roc_curve, main = paste("ROC Curve (AUC =", round(auc_value, 3), ")"))
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Visualize prediction distribution
+library(ggplot2)
+
+# Prediction probability distribution plot
+ggplot(data.frame(probability = predictions_prob), aes(x = probability)) +
+  geom_histogram(bins = 50, fill = "blue", alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Prediction Probability Distribution",
+       x = "Prediction Probability",
+       y = "Frequency")
+
+# Output detailed classification report
+cat("
+Classification Report:
+")
+cat("True Positives:", conf_matrix$table[2,2], "
+")
+cat("False Positives:", conf_matrix$table[1,2], "
+")
+cat("True Negatives:", conf_matrix$table[1,1], "
+")
+cat("False Negatives:", conf_matrix$table[2,1], "
+")
+
+# Calculate results under custom thresholds (if needed)
+thresholds <- seq(0.1, 0.9, by = 0.1)
+results <- data.frame(
+  threshold = thresholds,
+  accuracy = numeric(length(thresholds)),
+  precision = numeric(length(thresholds)),
+  recall = numeric(length(thresholds)),
+  f1 = numeric(length(thresholds))
+)
+
+# Calculate metrics for different thresholds
+for(i in seq_along(thresholds)) {
+  pred_temp <- ifelse(predictions_prob > thresholds[i], 1, 0)
+  cm <- confusionMatrix(factor(pred_temp), factor(test_data$TARGET))
+  results$accuracy[i] <- cm$overall["Accuracy"]
+  results$precision[i] <- cm$byClass["Pos Pred Value"]
+  results$recall[i] <- cm$byClass["Sensitivity"]
+  results$f1[i] <- cm$byClass["F1"]
+}
+
+# Print results for different thresholds
+print(results)
+
+# Plot PR curve (Precision-Recall curve)
+pr <- pr.curve(scores.class0 = predictions_prob, 
+               weights.class0 = as.numeric(test_data$TARGET),
+               curve = TRUE)
+plot(pr)
+
+# Visualize metric changes under different thresholds
+results_long <- tidyr::gather(results, metric, value, -threshold)
+ggplot(results_long, aes(x = threshold, y = value, color = metric)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Model Performance Under Different Thresholds",
+       x = "Threshold",
+       y = "Metric Value")
+```
